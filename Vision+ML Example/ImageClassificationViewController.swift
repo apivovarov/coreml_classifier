@@ -10,6 +10,7 @@ import CoreML
 import Vision
 import ImageIO
 
+@available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
 class ImageClassificationViewController: UIViewController {
     // MARK: - IBOutlets
     
@@ -27,7 +28,16 @@ class ImageClassificationViewController: UIViewController {
              To use a different Core ML classifier model, add it to the project
              and replace `MobileNet` with that model's generated Swift class.
              */
-            let model = try VNCoreMLModel(for: MobileNet().model)
+            //let model = try VNCoreMLModel(for: MobileNet().model)
+            // TF2 keras h5
+            let model = try VNCoreMLModel(for: MobileNetV2_tf2_h5_img().model)
+            // TF2 saved model
+            //let model = try VNCoreMLModel(for: MobileNetV2_tf2_saved_img().model)
+            // TF1 .pb frozen
+            //let model = try VNCoreMLModel(for: mobilenet_v2_1_0_224_frozen_img().model)
+            // PyTorch
+            //let model = try VNCoreMLModel(for: mobilenet_v2_torch_img().model)
+            
             
             let request = VNCoreMLRequest(model: model, completionHandler: { [weak self] request, error in
                 self?.processClassifications(for: request, error: error)
@@ -70,18 +80,46 @@ class ImageClassificationViewController: UIViewController {
                 return
             }
             // The `results` will always be `VNClassificationObservation`s, as specified by the Core ML model in this project.
-            let classifications = results as! [VNClassificationObservation]
-        
-            if classifications.isEmpty {
-                self.classificationLabel.text = "Nothing recognized."
-            } else {
-                // Display top classifications ranked by confidence in the UI.
-                let topClassifications = classifications.prefix(2)
-                let descriptions = topClassifications.map { classification in
-                    // Formats the classification for display; e.g. "(0.37) cliff, drop, drop-off".
-                   return String(format: "  (%.2f) %@", classification.confidence, classification.identifier)
+
+            if results[0] is VNCoreMLFeatureValueObservation {
+                let classifications = results as! [VNCoreMLFeatureValueObservation]
+            
+                print("Output featureName", classifications[0].featureName)
+                //print(classifications[0].featureValue)
+                let props = classifications[0].featureValue.multiArrayValue!
+                print("Output shape", props.shape)
+                
+                var maxV = 0.0;
+                var maxId = 0;
+                for i in 0...props.shape[1].intValue - 1 {
+                    let v = props[[0, i] as [NSNumber]]
+                    if v.doubleValue > 0.4 {
+                        print(i, v.doubleValue)
+                    }
+                    if v.doubleValue > maxV {
+                        maxV = v.doubleValue
+                        maxId = i
+                    }
                 }
-                self.classificationLabel.text = "Classification:\n" + descriptions.joined(separator: "\n")
+                print(maxV, maxId)
+                let description = String(format: "  (%.2f) %d", maxV, maxId)
+                self.classificationLabel.text = "Classification:\n" + description
+            } else if results[0] is VNClassificationObservation {
+                let classifications = results as! [VNClassificationObservation]
+                if classifications.isEmpty {
+                    self.classificationLabel.text = "Nothing recognized."
+                } else {
+                    // Display top classifications ranked by confidence in the UI.
+                    let topClassifications = classifications.prefix(2)
+                    let descriptions = topClassifications.map { classification in
+                        // Formats the classification for display; e.g. "(0.37) cliff, drop, drop-off".
+                       return String(format: "  (%.2f) %@", classification.confidence, classification.identifier)
+                    }
+                    self.classificationLabel.text = "Classification:\n" + descriptions.joined(separator: "\n")
+                    print(descriptions.joined(separator: "\n"))
+                }
+            } else {
+                self.classificationLabel.text = "Nothing recognized."
             }
         }
     }
@@ -118,6 +156,7 @@ class ImageClassificationViewController: UIViewController {
     }
 }
 
+@available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
 extension ImageClassificationViewController: UIImagePickerControllerDelegate, UINavigationControllerDelegate {
     // MARK: - Handling Image Picker Selection
 
